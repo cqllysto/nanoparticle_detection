@@ -1,0 +1,776 @@
+---
+title: "Plasma Nanoparticle Detection"
+author: "Aidan Wright & Nate Youmans"
+date: "March 6, 2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+---
+
+
+\tableofcontents
+
+
+
+
+### Introduction
+After the completion of the midterm project that I did with Nate Youmans, I decided to pursue creating a more robust nanoparticle detection model that was capable of detecting different variants of nanoparticles with some more techniques.
+
+
+### Critical Path Explanation
+
+![Critical Path](C:/Users/aidan/Downloads/Critical_Path.png)
+
+My goals for the final project were relatively straight forward. The first step was to acquire a dataset to use beyond the three SEM images that Dr. Valderrama had provided me. My next three steps (which could be performed simultaneously) were to develop new detection methods, improve existing methods, and develop a recursive analysis model. These developments would then be combined into a final model.
+
+(For the sake of the length of this report, I will not include all the python scripts I developed as it would be a very long report. I will include the most interesting and important scripts (namely, the watershedding/grain script and the recursive detection script) and submit all of the other scripts in the dropbox.)
+
+
+### Aquiring a Dataset
+
+I wanted to find a dataset that would provide me with more diverse examples of nanoparticles that I could develop my model to detect. Initially, this was quite challenging as the data set needed to have a good mixture of uniformity and diversity. For example, I did not want pictures with a mixture of particles with other SEM images. After some searching, I discovered the NFFA-EUROPE - 100% SEM Dataset. This dataset has many different SEM images, but they are all categorized. One of these categories is Particles. This dataset fit all my requirements and then some. 
+
+Here are some examples of the images it has provided me with.
+
+![SEM Image 1](C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/14.jpg)
+![SEM Image 2](C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/103.jpg)
+![SEM Image 3](C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/305.jpg)
+### Developing new detection techniques
+
+The first of my three goals was to develop new techniques that I could use to detect and label nanoparticles. The two images that I saw most frequently appearing when I was searching for SEM images were grains and different colored nanoparticles. Applying my model to black nanoparticles with white backgrounds was fairly easy. I simply inverted a lot of the commands I used to process the white nanoparticles. In hindsight, simply switching the value of the thresholded nanoparticles would have probably been an easier and more accurate process, however simply writing a new model was not particularly difficult or challenging.
+
+
+![Critical Path](C:/Users/aidan/Downloads/Screenshot 2022-04-15 153752.png)
+
+The other type of SEM image that I wanted to identify was grain images. To be honest, the original model performed pretty well with grains, only needing some tweaks to improve it. 
+
+![Critical Path](C:/Users/aidan/Downloads/Screenshot 2022-04-15 154349.png)
+
+The big change to the script was when I learned how to apply watershedding to grains for a high degree of accuracy in detecting distinct grains. This brings me to my second goal.
+
+
+
+
+### Improving Existing Techniques
+
+The second of my three goals was to improve the techniques that I had learned by working on the midterm project. To more concretely express this goal, I wanted my model to be able to handle more difficult SEM images and still maintain a high degree of accuracy. I improved the model in two main ways: developing a method to process labels (As seen in the SEM images in the dataset) and applying watershedding to images that I could.
+
+One of the ways that I made working with such a large data set easier was creating a script that renames all the files to 1:{number of files in the folder}.
+
+This meant that if I saw an image that I liked and wanted to analyze, I could simply call its number.jpg e.g. 283.jpg. 
+In the orginal dataset, each image had a very long complicated name of letters and numbers.
+
+![283.jpg](C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/283.jpg)
+
+This script below covers how I applied watershedding to detecting grains.
+
+
+
+
+*** IMPORTANT NOTES ***   
+1. Some of the variables in this script coincide with the previous script. This has not caused any issues for me yet, but it is a disclaimer in case you want to analyze the variables. They will overlap, so analyze variables one script at a time, if you want me to change them I can. 
+
+2. If you want to save an image simply inset this psuedocode below where the image is defined that you want to save.
+
+e.g. 
+image_to_save = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
+saved_image = Image.fromarray(image_to_save)
+saved_image.save('hello.png')
+
+saved_image.show()
+
+If you add the last part, it will show the image.
+
+3. Some images will not work well on the previous script. 
+In which case, use cv2 saving function ( I have commented it out for your ease of use)
+
+4. When you run the code below, make sure to check that you have exited out of all the windows that it will bring up. If you do not close out of the colored particle image, python will crash. After you have exited out of all image windows, you may run the code as normal.
+
+
+
+```{r, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+library(reticulate)
+library(ggplot2)
+library(tidyverse)
+library(stringr)
+
+photo_path = ('C:/Users/aidan/PycharmProjects/AI_Spring_2022/Photos/')
+file_path = ('C:/Users/aidan/PycharmProjects/AI_Spring_2022/Particle_Data/')
+
+file_path <- str(file_path)
+```
+
+```{r, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+use_python("C:/Users/aidan/anaconda3/python.exe")
+# Set the Directory for Python to Use
+```
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+"""
+Created on Sat Apr  2 03:27:47 2022
+
+@author: aidan
+"""
+
+
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy import ndimage
+from skimage import measure, color, io
+from PIL import Image
+
+image1 = cv2.imread("C:/Users/aidan/Documents/Nanoparticle_Detection/Images/7.jpg")
+img = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
+
+photo_path = ("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/Images/")
+file_path = ("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/")
+
+# Thresholding the Image using the OTSU algorithim
+ret1, img_thresh = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+
+
+# Removing the small holes within the image
+
+kernel = np.ones((3,3),np.uint8)
+holes = cv2.morphologyEx(img_thresh,cv2.MORPH_OPEN,kernel, iterations = 2)
+
+img0 = Image.fromarray(img_thresh)
+img0.show()
+
+# Removing any grains that touch the border
+from skimage.segmentation import clear_border
+holes = clear_border(holes)
+
+```
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+ 
+
+# Identifying what is for sure background so that watershed knowns it is not particle
+background = cv2.dilate(holes,kernel,iterations=2)
+
+
+# https://www.tutorialspoint.com/opencv/opencv_distance_transformation.html
+# Finding what is definitely a particle by applying a distance transform and then thresholding
+# (distance transforming gives pixels more intensity if they are further away 
+# from the nearest 0 value(background))
+distance = cv2.distanceTransform(holes,cv2.DIST_L2,3)
+
+
+# convert values to 0 - 255 int8 format
+formatted = (distance * 255 / np.max(distance)).astype('uint8')
+img1 = Image.fromarray(formatted)
+img1.show()
+
+# Here you can clearly see that the distance transform is highlighting the pixels that are the 
+# furthest away from any black edges, marking them as the "center"
+```
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+# Thresholding the distance transform by about 20% of its max value
+ret2, foreground = cv2.threshold(distance,0.2*distance.max(),255,0)
+
+
+# 20% of the max value seperates the cells well, however, this variable is free to change
+# to get better results on a different image. High percentages like 50% will not recognize some of the boundaries.
+# 0.2* max value seems to separate the cells well.
+foreground = np.uint8(foreground)
+
+# Here we create an unknown region that is the background minus the foreground
+unknown_region = cv2.subtract(background,foreground)
+
+
+img2 = Image.fromarray(background)
+img3 = Image.fromarray(foreground)
+img4 = Image.fromarray(unknown_region)
+img2.show()
+img3.show()
+img4.show()
+
+# Here we are creating markers out of ConnectedComponents. We will give unknown regions a value of 0, and 
+# our foreground and background will be labeled with positive numbers.
+ret3, markers = cv2.connectedComponents(foreground)
+markers = markers+10
+
+# We mark the unknown region with a value of 0.
+markers[unknown_region==255] = 0
+# This plot clearly shows the unknown region, followed by the foreground and background.
+plt.imshow(markers, cmap='jet')
+
+# Now we use watershedding to mark the boundary layers that water "spills" down.
+markers = cv2.watershed(image1,markers)
+#The boundary region will be marked -1
+#https://docs.opencv.org/3.3.1/d7/d1b/group__imgproc__misc.html#ga3267243e4d3f95165d55a618c65ac6e1
+
+
+# OpenCV assigns the boundaries a value of -1 so we will set that to red to be able to see it.
+
+image1[markers == -1] = [255,0,0]  
+img5 = Image.fromarray(image1)
+img5.show()
+
+image2 = color.label2rgb(markers, bg_label=0)
+
+cv2.imshow("colored image",image2)
+cv2.waitKey(0)
+
+# Here we can clearly see how we cleaned the image using the markers and the 
+# watershedding
+
+```
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = FALSE}
+
+
+# The last step is to measure the region properties, explained in more detail in
+# the midterm project report.
+
+clusters = measure.regionprops(markers, intensity_image=img)
+
+propList = ['Area',
+            'equivalent_diameter',
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'centroid'
+            ] 
+labelList = ['Label',
+            'Area',
+            'equivalent_diameter', 
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'y.cord',
+            'x.cord'
+            ]    
+
+dataPath = ("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/")
+file = ("7_data.csv")
+pathFile = dataPath + file
+
+output_file = open(pathFile, 'w')
+output_file.write(",".join(labelList) + '\n') #join strings in array by commas
+
+
+# Here we have the option to input a scaling mechanic in our code. If we want all our measurements to be in realworld units such as meters, we can do that here.
+for cluster_props in clusters:
+    #output cluster properties to the excel file
+    output_file.write(str(cluster_props['Label']))
+    for i,prop in enumerate(propList):
+        if(prop == 'Area'): 
+            to_print = cluster_props[prop] # *(pixels to nanometer)**2   
+        elif(prop == 'orientation'): 
+            to_print = cluster_props[prop]*57.2958  # Convert to degrees from radians
+        elif(prop.find('Axis') > 0):
+            to_print = cluster_props[prop] # * (pixels to nanometer)
+        else: 
+            to_print = cluster_props[prop]
+        output_file.write(',' + str(to_print))
+    output_file.write('\n') 
+output_file.close() 
+
+
+```
+
+I hope at this point, watershedding makes sense and the method that I applied it in is clear.
+
+My next step in improving our existing model was to remove the labels that the model might run across in it's analysis of particles in our dataset. I actually found the dataset that I am using when researching some ideas of how I might approach this problem.
+
+This website 
+https://towardsdatascience.com/saemi-size-analysis-of-electron-microscopy-images-36c9f61d52ed 
+was very helpful in learning how to detect the labels on images and remove them.
+
+I think that I improved upon their model in several ways however.
+
+For starters, once they found the label, they used a system called "reflection padding" to cover up the orignal label. Perhaps they did this in order to maintain the size of the image, but in particle analysis, duplicated particles skews your data.
+
+![Critical Path](C:/Users/aidan/Downloads/Screenshot 2022-04-20 231657.png)
+
+As you can see in the above image, the particles become duplicated, which skews with the data. In this particular image, the result is not too bad, but in other images, this method leads to many many many duplicated particles. My solution to this was to simply cut out the label, reducing the size of the image, but keeping particle quality. One other solution to this would be to simply crop the image at the coordinates of the label, and then use clear_borders to remove particles touching the border. This is a very boring solution though, in my opinion, it keeps the analysis of the images more pure.
+
+The script which I used to cut the image is shown in the recursive detection script further in the report.
+
+
+
+### Implementing a Recursive Model
+
+The last step in my journey to a more complete model was creating a script that would recursively threshold the image to find darker particles. The concept behind this process is fairly simple. I take an image, run my detection script on it, minus the mask of the detected particles from the original image to create an image with all detected nanoparticles removed from it. This new image is then thresholded again and ran through the same detection script.
+
+Below is the script I used to recursively detect nanoparticles.
+
+
+
+
+*** IMPORTANT NOTES ***
+1. Some of the variables in this script coincide with the previous script. This has not caused any issues for me yet, but it is a disclaimer in case you want to analyze the variables. They will overlap, so analyze variables one script at a time, if you want me to change them I can. 
+
+2. If you want to save an image simply inset this psuedocode below where the image is defined that you want to save.
+
+e.g. 
+image_to_save = cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
+saved_image = Image.fromarray(image_to_save)
+saved_image.save('hello.png')
+
+saved_image.show()
+
+If you add the last part, it will show the image.
+
+3. Some images will not work well on the previous script. 
+In which case, use cv2 saving function ( I have commented it out for your ease of use)
+
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+import cv2
+# Imports OpenCV for Image Processing
+import numpy as np
+from scipy import ndimage
+# Imports ndimage from scipy for image labeling
+from skimage import color, measure
+# Imports Coloring and Measuring features from Skimage to output useful information
+
+img = cv2.imread("C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/283.jpg")
+# convert image to grayscale
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+# create binary mask based on threshold of 250
+ret, binary = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY)
+
+```
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+# create tall thin kernel
+verticle_kernel = cv2.getStructuringElement(
+    cv2.MORPH_RECT, 
+    (1, 13)
+)
+# create short long kernel
+horizontal_kernel = cv2.getStructuringElement(
+    cv2.MORPH_RECT, 
+    (13, 1)
+)
+# detect vertical lines in the image
+img_v = cv2.erode(binary, verticle_kernel, iterations = 3)
+img_v = cv2.dilate(img_v, verticle_kernel, iterations = 3)
+
+
+# detect horizontal lines in the image
+img_h = cv2.erode(binary, horizontal_kernel, iterations = 3)
+img_h = cv2.dilate(img_h, horizontal_kernel, iterations = 3)
+
+
+
+
+kernel=np.ones((3,3), np.uint8)
+# add the vertically eroded and horizontally eroded images
+img_add = cv2.addWeighted(img_v, 0.5, img_h, 0.5, 0.0)
+# perform final erosion and binarization
+img_final = cv2.erode(~img_add, kernel, iterations = 3)
+ret, img_final = cv2.threshold(
+    img_final, 
+    128, 
+    255, 
+    cv2.THRESH_BINARY | cv2.THRESH_OTSU
+)
+
+
+cv2.imshow("image 1",img_add)
+cv2.imshow("image 2",img_final)
+cv2.waitKey(0)
+
+
+banner = np.argwhere(img_final == 0)
+# coordinates of the top left corner
+banner_x1, banner_y1 = banner[0, 1], banner[0, 0]
+# coordinates of the bottom right corner
+banner_x2, banner_y2 = banner[-1, 1], banner[-1, 0]
+
+
+crop1 = gray[0:banner_y1, 0:1024]
+crop2 = gray[banner_y2:768, 0:1024]
+imgcopy = np.concatenate((crop1, crop2), axis=0)
+
+
+cv2.imshow("final image", imgcopy)
+cv2.imshow("original image", img)
+cv2.waitKey(0)
+
+imgcopy = np.uint8(imgcopy)
+```
+
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+ret, thresh = cv2.threshold(imgcopy, 0,255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+# performs thresholding onto the image. THRESH_OTSU takes the above histogram and uses an algorithim developed by Nobuyuki Otsu to divide the pixels into two groups,
+# foreground and background, where it sets a threshold between these two groups.
+
+
+cv2.imshow("thresholded image", thresh)
+cv2.waitKey(0)
+
+
+```
+
+Now that we have our pure thresholded image, we go throught the first round of image detection.
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+
+kernel=np.ones((3,3), np.uint8)
+# setting a kernel for the eroding and dilating functions
+
+eroded =cv2.erode(thresh, kernel, iterations = 5)
+dilated = cv2.dilate(eroded, kernel, iterations = 5)
+# erodes and dilates the image so as to remove noise and clean the particles
+
+
+mask = dilated == 255 
+# Creating a mask which only includes white pixels from the dilated image
+
+
+
+s = [[1,1,1], [1,1,1], [1,1,1]]
+labeled_mask, num_labels = ndimage.label(mask, structure=s)
+# Using ndimage to label the all particles that showed up in the mask
+
+img2 = color.label2rgb(labeled_mask, bg_label = 0)
+# coloring these labeled sections to better portray the labeling
+
+#cv2.imshow("final", imgcopy)
+#cv2.imshow("thresh", thresh)
+#cv2.waitKey(0)
+
+dilated = np.uint8(dilated)
+# changing the format of the dilated image so we can save it
+
+
+```
+
+Dilated represents our first, most obvious particles that we can detect. We will use this to remove the old particles from the image.
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+# dilating the first round of particles a bit more to clean the "halo" effect that sometimes is caused by the particles
+# (this step might be removed if I deem it useless or counterproductive later)
+dilated = cv2.dilate(eroded, kernel, iterations = 5)
+
+# subtracting the detected nanoparticles from the original image
+img3 = cv2.subtract(imgcopy, dilated)
+```
+
+
+
+
+Use this code to save images if you want to look at them later or have them in a documented folder.
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+
+# image_path = "C:/Users/aidan/Documents/Nanoparticle_Detection/Images/Particles/"
+# photo_path = "C:/Users/aidan/Documents/Nanoparticle_Detection/Data/Images/"
+
+
+
+# sav = (photo_path + '0.png')
+# statu = cv2.imwrite(sav, imgcopy)
+# print("Eroded Image written to file-system : ",statu)
+ 
+# save1 = (photo_path + '0a.png')
+# status1 = cv2.imwrite(save1, thresh)
+# print("Eroded Image written to file-system : ",status1)
+
+# save3 = (photo_path + '0b.png')
+# status3 = cv2.imwrite(save3, dilated)
+# print("Thresholded Image written to file-system : ",status3)
+
+# save2 = (photo_path + '0d.png')
+# status2 = cv2.imwrite(save2, img3)
+# print("Colored Image written to file-system : ",status2)
+
+```
+
+
+
+Here we start finalize the cleaning of the not detected particles
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+# Setting the detected particles pixel value to the mean of the image
+img3[img3==0] = np.mean(img3)
+cv2.imshow("img3",img3)
+cv2.waitKey(0)
+
+
+# Use this code to save the image to a folder
+
+#save4 = (photo_path + '0e.png')
+#status4 = cv2.imwrite(save4, img3)
+#print("Colored Image written to file-system : ",status4)
+
+```
+
+
+Thresholding and analyzing the second batch of nanoparticles. 
+
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+
+
+
+# plt.hist(img.flat, bins=100, range=(0,255))
+ret, threshed = cv2.threshold(
+    img3, 
+    0, 
+    255, 
+    cv2.THRESH_BINARY | cv2.THRESH_OTSU
+)
+# performs thresholding onto the image. THRESH_OTSU takes the above histogram and uses an algorithim developed by Nobuyuki Otsu to divide the pixels into two groups,
+# foreground and backgroung, where it sets a threshold between these two groups.
+
+
+kernel=np.ones((3,3), np.uint8)
+# setting a kernel for the eroding and dilating functions
+
+wane =cv2.erode(threshed, kernel, iterations = 2)
+wax = cv2.dilate(wane, kernel, iterations = 2)
+# erodes and dilates the image so as to remove noise and clean the particles
+
+
+#cv2.imshow("eroded",wane)
+#cv2.imshow("dilated",wax)
+
+
+# cv2.imshow("img",img3)
+# cv2.imshow("threshed",threshed)
+# cv2.imshow("wane",wane)
+# cv2.imshow("wax",wax)
+# cv2.waitKey(0)
+
+```
+
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = TRUE}
+mask2 = wax == 255 # Creating a mask which only includes white pixels from the dilated image
+
+
+s2 = [[1,1,1], [1,1,1], [1,1,1]]
+labeling, num_labels2 = ndimage.label(mask2, structure=s)
+# Using ndimage to label the all particles that showed up in the mask
+
+img8 = color.label2rgb(labeling, bg_label = 0)
+# coloring these labeled sections to better portray the labeling
+
+
+# cv2.imshow("thresh", threshed)
+# cv2.imshow("final", img8)
+# cv2.waitKey(0)
+
+final_image = cv2.add(img2,img8)
+
+
+
+cv2.imshow("img1",img2)
+cv2.imshow("img2",img8)
+cv2.imshow("final image", final_image)
+cv2.waitKey(0)
+
+# save5 = (photo_path + '0f.png')
+# status5 = cv2.imwrite(save5, final_image)
+# print("Colored Image written to file-system : ",status5)
+
+# save6 = (photo_path + '0g.png')
+# status6 = cv2.imwrite(save6, wane)
+# print("Colored Image written to file-system : ",status6)
+```
+
+Doing the final measurements of the two batches of detected nanoparticles.
+
+These have to be measured separately and then their csv files have to be added back together in R, as I have no had the time to code a more elegant solution. I can do this during the summer if necessary. One of the many improvements I can make.
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = FALSE}
+clusters = measure.regionprops(labeled_mask, imgcopy)
+# measuring region properties of the image with Skimage
+
+# These two lists are necessary to format the CSV file so that no column gets overwritten by a different column and the coordinates get written at the end under the names y,cord and x.cord
+propList = ['Area',
+            'equivalent_diameter',
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'centroid'
+            ] 
+labelList = ['Label',
+            'Area',
+            'equivalent_diameter', 
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'y.cord',
+            'x.cord'
+            ]    
+
+dataPath = ("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/")
+file = ("8_data.csv")
+pathFile = dataPath + file
+
+output_file = open(pathFile, 'w')
+output_file.write(",".join(labelList) + '\n') #join strings in array by commas
+
+
+# Here we have the option to input a scaling mechanic in our code. If we want all our measurements to be in realworld units such as meters, we can do that here.
+for cluster_props in clusters:
+    #output cluster properties to the excel file
+    output_file.write(str(cluster_props['Label']))
+    for i,prop in enumerate(propList):
+        if(prop == 'Area'): 
+            to_print = cluster_props[prop] # *(pixels to nanometer)**2   
+        elif(prop == 'orientation'): 
+            to_print = cluster_props[prop]*57.2958  # Convert to degrees from radians
+        elif(prop.find('Axis') > 0):
+            to_print = cluster_props[prop] # * (pixels to nanometer)
+        else: 
+            to_print = cluster_props[prop]
+        output_file.write(',' + str(to_print))
+    output_file.write('\n') 
+output_file.close() 
+```
+
+Second Measurement
+
+```{python, echo = TRUE, warning = FALSE, message = FALSE, include = FALSE}
+clusters = measure.regionprops(labeling, imgcopy)
+# measuring region properties of the image with Skimage
+
+# These two lists are necessary to format the CSV file so that no column gets overwritten by a different column and the coordinates get written at the end under the names y,cord and x.cord
+propList = ['Area',
+            'equivalent_diameter',
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'centroid'
+            ] 
+labelList = ['Label',
+            'Area',
+            'equivalent_diameter', 
+            'orientation',
+            'MajorAxisLength',
+            'MinorAxisLength',
+            'Perimeter',
+            'MinIntensity',
+            'MeanIntensity',
+            'MaxIntensity',
+            'eccentricity',
+            'y.cord',
+            'x.cord'
+            ]    
+
+dataPath = ("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/")
+file = ("8a_data.csv")
+pathFile = dataPath + file
+
+output_file = open(pathFile, 'w')
+output_file.write(",".join(labelList) + '\n') #join strings in array by commas
+
+
+# Here we have the option to input a scaling mechanic in our code. If we want all our measurements to be in realworld units such as meters, we can do that here.
+for cluster_props in clusters:
+    #output cluster properties to the excel file
+    output_file.write(str(cluster_props['Label']))
+    for i,prop in enumerate(propList):
+        if(prop == 'Area'): 
+            to_print = cluster_props[prop] # *(pixels to nanometer)**2   
+        elif(prop == 'orientation'): 
+            to_print = cluster_props[prop]*57.2958  # Convert to degrees from radians
+        elif(prop.find('Axis') > 0):
+            to_print = cluster_props[prop] # * (pixels to nanometer)
+        else: 
+            to_print = cluster_props[prop]
+        output_file.write(',' + str(to_print))
+    output_file.write('\n') 
+output_file.close() 
+
+exit
+```
+
+
+
+
+
+### Data Analytics in R
+
+
+Here we will explore our data and the analytics that we did on it
+```{r, echo = FALSE, warning = FALSE, message = FALSE, include = TRUE}
+data1 <- read.csv("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/8_data.csv")
+data2 <- read.csv("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/8a_data.csv")
+labels <- read.csv("C:/Users/aidan/Documents/Nanoparticle_Detection/Data/830_label.txt")
+
+data <- rbind(data1, data2)
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, include = TRUE}
+
+scatter <- ggplot(data=data, aes(x = Area, y = MeanIntensity)) 
+scatter + geom_point(size = 3) +
+  xlab("Pixel Area") +  ylab("Intensity") +
+  ggtitle("Pixel Areas Correlated with Intensity")
+
+```
+
+
+Plot of Labels vs Model
+```{r, echo = FALSE, warning = FALSE, message = FALSE, include = TRUE}
+
+data$x.cord <- gsub(")","",as.character(data[["x.cord"]]))
+data$y.cord <- gsub('^.', '', as.character(data[["y.cord"]]))
+
+data$x.cord <- as.numeric(data$x.cord)
+data$y.cord <- as.numeric(data$y.cord)
+
+data$x.cord <- round(data$x.cord, digit=2)
+data$y.cord <- round(data$y.cord, digit=2)
+
+```
+
+```{r}
+
+ggplot(data = data, aes(x = x.cord, y = y.cord)) + geom_point(size = 5,colour="blue") + geom_point(data=labels, aes(x = x,y = y), size = 2, color="red") + 
+  ggtitle("Blue = Modeled / Red = Hand-Labeled")
+
+```
+
+
+#### Reference
+I learned how to use most of my code from https://github.com/bnsreenu. In particular, his Tutorial 51 (Image Thresholding and Segmentation) and Tutorial 52 (Autothresholding) were extremely useful.
+
+Additionally, the journal page (https://towardsdatascience.com/saemi-size-analysis-of-electron-microscopy-images-36c9f61d52ed) was very useful to learn how to effectively remove labels from an image.
